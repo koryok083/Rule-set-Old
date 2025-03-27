@@ -34,7 +34,7 @@ jobs:
       - name: Create Release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           release_name: "Release ${{ env.RELEASE_TAG }}"
@@ -45,7 +45,7 @@ jobs:
       - name: Upload Release Assets
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./rule-sets/bank-indo.yaml
@@ -56,5 +56,5 @@ jobs:
         uses: AButler/upload-release-assets@v2.0
         with:
           files: 'rule-sets/*.yaml'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token: ${{ secrets.GH_TOKEN }}
           release-tag: ${{ env.RELEASE_TAG }}
