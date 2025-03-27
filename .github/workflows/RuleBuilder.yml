@@ -1,0 +1,127 @@
+name: Mega Rule-Sets Builder
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *' # Update harian jam 00:00 UTC
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          mkdir -p rule-sets
+          echo "LAST_UPDATED=$(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
+
+      - name: Build Mega Rule-Sets
+        run: |
+          # Fungsi untuk gabungkan multiple sources
+          build_ruleset() {
+            local output=$1
+            local name=$2
+            shift 2
+            local sources=("$@")
+            
+            echo "# ${name} Rule-Set" > $output
+            echo "# Combined from ${#sources[@]} premium sources" >> $output
+            echo "# Last update: ${{ env.LAST_UPDATED }}" >> $output
+            echo "payload:" >> $output
+            
+            for url in "${sources[@]}"; do
+              echo "# Source: $url" >> $output
+              curl -sSL "$url" | \
+              grep -Ev '^#|^$' | \
+              awk '{
+                if($0 ~ /^[a-zA-Z0-9.-]+$/) print "  - \"" $0 "\"";
+                else if($0 ~ /^\|\|/) print "  - \"" substr($0,3) "\"";
+                else if($0 ~ /^0\.0\.0\.0/) print "  - \"" $2 "\"";
+              }' | \
+              sort -u >> $output
+            done
+          }
+
+          # BANK INDONESIA (8 sumber)
+          build_ruleset "rule-sets/bank-indo.yaml" "Bank Indonesia" \
+            "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_bank-id.txt" \
+            "https://raw.githubusercontent.com/ngosang/trackerslist/master/block.txt" \
+            "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/banking.txt" \
+            "https://raw.githubusercontent.com/olbat/ut1-blacklists/master/blacklists/banking/domains"
+
+          # WHATSAPP (6 sumber)
+          build_ruleset "rule-sets/whatsapp.yaml" "WhatsApp" \
+            "https://raw.githubusercontent.com/geekdada/surge-list/master/whatsapp.list" \
+            "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/ruleset/whatsapp.txt" \
+            "https://raw.githubusercontent.com/DivineEngine/Profiles/master/Surge/Ruleset/Extra/WhatsApp.list" \
+            "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/WhatsApp/WhatsApp.list"
+
+          # SOSMED (12 sumber)
+          build_ruleset "rule-sets/sosmed.yaml" "Social Media" \
+            "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_sosmed.txt" \
+            "https://raw.githubusercontent.com/geekdada/surge-list/master/social.list" \
+            "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/ruleset/social.txt" \
+            "https://raw.githubusercontent.com/DivineEngine/Profiles/master/Surge/Ruleset/Extra/Social/Telegram.list" \
+            "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/TikTok/TikTok.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Twitter.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Instagram.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Social/WeChat.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Social/Reddit.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Social/LinkedIn.list"
+
+          # STREAMING (9 sumber)
+          build_ruleset "rule-sets/streaming.yaml" "Streaming" \
+            "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_streaming.txt" \
+            "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/ruleset/netflix.txt" \
+            "https://raw.githubusercontent.com/DivineEngine/Profiles/master/Surge/Ruleset/StreamingMedia/Video/Netflix.list" \
+            "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/YouTube/YouTube.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Netflix.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/YouTube.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Disney.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Video/Netflix.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Video/YouTube.list"
+
+          # GAMING (7 sumber)
+          build_ruleset "rule-sets/gaming.yaml" "Gaming" \
+            "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_gaming.txt" \
+            "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/ruleset/game.txt" \
+            "https://raw.githubusercontent.com/DivineEngine/Profiles/master/Surge/Ruleset/Extra/Game/Steam.list" \
+            "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Epic/Epic.list" \
+            "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Ruleset/Steam.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Games/Steam.list" \
+            "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Games/Epic.list"
+
+          # ADS BLOCKER (15 sumber premium)
+          build_ruleset "rule-sets/ads.yaml" "Ads Blocker" \
+            "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_ads.txt" \
+            "https://raw.githubusercontent.com/d3ward/toolz/master/src/d3host.txt" \
+            "https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt" \
+            "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt" \
+            "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml" \
+            "https://someonewhocares.org/hosts/hosts" \
+            "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/adservers.txt" \
+            "https://raw.githubusercontent.com/AdAway/adaway.github.io/master/hosts.txt" \
+            "https://raw.githubusercontent.com/olbat/ut1-blacklists/master/blacklists/adservers/domains" \
+            "https://raw.githubusercontent.com/notracking/hosts-blocklists/master/domains.txt" \
+            "https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV.txt" \
+            "https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/android-tracking.txt" \
+            "https://raw.githubusercontent.com/bigdargon/hostsVN/master/hosts" \
+            "https://raw.githubusercontent.com/jdlingyu/ad-wars/master/hosts" \
+            "https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt"
+
+      - name: Deploy to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            rule-sets/bank-indo.yaml
+            rule-sets/whatsapp.yaml
+            rule-sets/sosmed.yaml
+            rule-sets/streaming.yaml
+            rule-sets/gaming.yaml
+            rule-sets/ads.yaml
+          tag_name: "v$(date +%Y%m%d)"
+          body: "Auto-updated mega rule-sets (${{ env.LAST_UPDATED }})"
