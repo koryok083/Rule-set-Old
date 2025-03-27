@@ -1,8 +1,8 @@
-name: Python Rule-Sets Builder
+name: Fixed Python Rule-Sets Builder
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'  # Daily auto-update at 00:00 UTC
 
 jobs:
   build:
@@ -10,24 +10,75 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repo
+      # ========== SETUP ==========
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
+      - name: Install dependencies
+        run: pip install requests pyyaml
+
+      # ========== BUILD RULES ==========
       - name: Run Python Builder
+        id: build_rules
         run: |
           python3 build_rules.py
+          echo "BANK_DOMAINS=$(cat rules/bank.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
+          echo "ADS_DOMAINS=$(cat rules/ads.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
+          echo "SOCIAL_DOMAINS=$(cat rules/social.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
         env:
-          RELEASE_TAG: v$(date +%Y%m%d)
           LAST_UPDATED: $(date +'%Y-%m-%d %H:%M:%S %Z')
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+      # ========== RELEASE ==========
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: clash-rules
-          path: rules/
-          retention-days: 1
+          tag_name: "v$(date +%Y%m%d)"
+          release_name: "Clash Rules v$(date +%Y%m%d)"
+          body: |
+            🏦 Banking: ${{ steps.build_rules.outputs.BANK_DOMAINS }} domains
+            🚫 Ads: ${{ steps.build_rules.outputs.ADS_DOMAINS }} domains
+            💬 Social: ${{ steps.build_rules.outputs.SOCIAL_DOMAINS }} domains
+            🔄 Updated: ${{ env.LAST_UPDATED }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./rules/bank.yaml
+          asset_name: bank.yaml
+          asset_content_type: application/yaml
+
+      - name: Upload All Rules
+        run: |
+          for file in ./rules/*.yaml; do
+            if [ "$(basename $file)" != "bank.yaml" ]; then
+              echo "Uploading $(basename $file)..."
+              curl -sSL \
+                -X POST \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/yaml" \
+                --data-binary @"$file" \
+                "${{ github.event.release.upload_url }}?name=$(basename $file)"
+            fi
+          done
+
+      # ========== NOTIFICATION ==========
+      - name: Notify Success
+        if: success()
+        run: |
+          echo "🎉 Successfully built rule-sets!"
+          echo "📅 Last Updated: ${{ env.LAST_UPDATED }}"
+          echo "🏷️ Release Tag: v$(date +%Y%m%d)"
