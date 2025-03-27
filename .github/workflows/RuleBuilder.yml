@@ -1,148 +1,33 @@
-name: Clash Rule-Sets Factory
+name: Python Rule-Sets Builder
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # Auto-update daily 00:00 UTC
-  push:
-    branches: [ master ]
+    - cron: '0 0 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
-      # ========== INITIAL SETUP ==========
-      - name: Checkout Repository
+      - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          fetch-depth: 0
+          python-version: '3.10'
 
-      - name: Setup Environment
+      - name: Run Python Builder
         run: |
-          mkdir -p {rules,temp,logs}
-          echo "RELEASE_TAG=v$(date +%Y%m%d)" >> $GITHUB_ENV
-          echo "LAST_UPDATED=$(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
-
-      # ========== DOMAIN PROCESSING ==========
-      - name: Download and Process Sources
-        run: |
-          # Fungsi pembersih domain
-          clean_domains() {
-            awk '{
-              gsub(/[^a-zA-Z0-9.-]/, "", $0)  # Hapus karakter spesial
-              if ($0 ~ /^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/)  # Validasi format domain
-                print tolower($0)
-            }' | sort -u
-          }
-
-          # 1. BANKING (5 sumber)
-          curl -sSL "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_bank-id.txt" | clean_domains > temp/bank.txt
-          curl -sSL "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/banking.txt" | awk -F'^\\|\\|' '{print $2}' | awk -F'\\^' '{print $1}' | clean_domains >> temp/bank.txt
-          curl -sSL "https://raw.githubusercontent.com/nextdns/cname-cloaking-blocklist/master/banks" | clean_domains >> temp/bank.txt
-
-          # 2. ADS BLOCKER (8 sumber)
-          curl -sSL "https://raw.githubusercontent.com/d3ward/toolz/master/src/d3host.txt" | awk '/^0\.0\.0\.0/ {print $2}' | clean_domains > temp/ads.txt
-          curl -sSL "https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt" | awk -F'^\\|\\|' '{print $2}' | awk -F'\\^' '{print $1}' | clean_domains >> temp/ads.txt
-          curl -sSL "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/adservers.txt" | clean_domains >> temp/ads.txt
-
-          # 3. SOCIAL MEDIA (6 sumber)
-          curl -sSL "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_sosmed.txt" | clean_domains > temp/social.txt
-          curl -sSL "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list" | clean_domains >> temp/social.txt
-          curl -sSL "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Twitter.list" | clean_domains >> temp/social.txt
-
-          # Hitung jumlah domain
-          echo "BANK_DOMAINS=$(wc -l < temp/bank.txt)" >> $GITHUB_ENV
-          echo "ADS_DOMAINS=$(wc -l < temp/ads.txt)" >> $GITHUB_ENV
-          echo "SOCIAL_DOMAINS=$(wc -l < temp/social.txt)" >> $GITHUB_ENV
-
-      # ========== BUILD RULE-SETS ==========
-      - name: Generate YAML Rules
-        run: |
-          generate_rule() {
-            local category=$1
-            local source_count=$2
-            local domain_count=$3
-            
-            cat <<EOF > rules/${category}.yaml
-            # ${category^} Rule-Set
-            # Sources: ${source_count} trusted repositories
-            # Updated: ${{ env.LAST_UPDATED }}
-            # Total Domains: ${domain_count}
-            
-            payload:
-            $(awk '{print "              - \"" $0 "\""}' temp/${category}.txt)
-            EOF
-            
-            echo "✅ Generated ${category}.yaml (${domain_count} rules)"
-          }
-
-          generate_rule "bank" 5 ${{ env.BANK_DOMAINS }}
-          generate_rule "ads" 8 ${{ env.ADS_DOMAINS }}
-          generate_rule "social" 6 ${{ env.SOCIAL_DOMAINS }}
-
-      # ========== QUALITY CONTROL ==========
-      - name: Validate Rules
-        run: |
-          echo "🧪 Validating YAML files..."
-          yamllint rules/*.yaml
-          echo "✔️ All rule-sets passed validation"
-
-      # ========== RELEASE ARTIFACTS ==========
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
+          python3 build_rules.py
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v$(date +%Y%m%d)
+          LAST_UPDATED: $(date +'%Y-%m-%d %H:%M:%S %Z')
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          release_name: "Clash Rules ${{ env.RELEASE_TAG }}"
-          body: |
-            🏦 Banking: ${{ env.BANK_DOMAINS }} domains
-            🚫 Ads: ${{ env.ADS_DOMAINS }} domains
-            💬 Social: ${{ env.SOCIAL_DOMAINS }} domains
-            🔄 Updated: ${{ env.LAST_UPDATED }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Rules
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./rules/bank.yaml
-          asset_name: bank.yaml
-          asset_content_type: application/yaml
-
-      - name: Upload All Assets
-        run: |
-          for file in ./rules/*.yaml; do
-            if [ "$(basename $file)" != "bank.yaml" ]; then
-              echo "📤 Uploading $(basename $file)..."
-              curl -sS \
-                -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/yaml" \
-                --data-binary @"$file" \
-                "${{ steps.create_release.outputs.upload_url }}?name=$(basename $file)"
-            fi
-          done
-
-      # ========== POST-BUILD ==========
-      - name: Cleanup
-        run: rm -rf temp/
-
-      - name: Build Summary
-        run: |
-          echo "========================================"
-          echo "🚀 CLASH RULE-SETS BUILD SUCCESSFUL"
-          echo "========================================"
-          echo "📅 Last Updated: ${{ env.LAST_UPDATED }}"
-          echo "🏷️ Release Tag: ${{ env.RELEASE_TAG }}"
-          echo "📦 Rules Generated:"
-          echo "  - 🏦 Banking: ${{ env.BANK_DOMAINS }} domains"
-          echo "  - 🚫 Ads: ${{ env.ADS_DOMAINS }} domains"
-          echo "  - 💬 Social: ${{ env.SOCIAL_DOMAINS }} domains"
-          echo "🔗 Release URL: ${{ steps.create_release.outputs.html_url }}"
-          echo "========================================"
+          name: clash-rules
+          path: rules/
+          retention-days: 1
