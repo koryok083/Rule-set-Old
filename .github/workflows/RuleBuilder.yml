@@ -123,5 +123,6 @@ jobs:
             rule-sets/streaming.yaml
             rule-sets/gaming.yaml
             rule-sets/ads.yaml
-          tag_name: "v$(date +%Y%m%d)"
+          tag_name: "v$(date +%Y%m%d)"  # Format yang benar
           body: "Auto-updated mega rule-sets (${{ env.LAST_UPDATED }})"
+```
