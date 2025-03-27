@@ -1,0 +1,9 @@
+{
+  "indo": ["id", "Indo"],
+  "bank_indo": ["bca", "bni", "bri", "mandiri", "jenius", "bank"],
+  "whatsapp": ["whatsapp"],
+  "sosial_media": ["facebook", "instagram", "twitter", "tiktok", "telegram"],
+  "streaming": ["netflix", "youtube", "disney", "hbo", "primevideo"],
+  "gaming": ["steam", "epicgames", "playstation", "xbox", "riotgames"],
+  "ads": ["adservice", "doubleclick", "tracking", "ads"]
+}
