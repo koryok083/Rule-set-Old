@@ -3,7 +3,7 @@ import json
 import os
 
 # URL geosite.dat dari repo MetaCubeX
-GEO_RULES_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite.dat"
+GEO_RULES_URL = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
 
 # Buat folder rules jika belum ada
 os.makedirs("rules", exist_ok=True)
