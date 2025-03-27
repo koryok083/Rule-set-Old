@@ -1,0 +1,28 @@
+name: Update Rule-Set
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Update setiap hari
+  workflow_dispatch:  # Bisa dijalankan manual
+
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        run: sudo apt update && sudo apt install -y python3 python3-pip
+
+      - name: Jalankan Filter Rules
+        run: |
+          python filter_rules.py
+
+      - name: Commit dan Push Perubahan
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add rules/*.yaml
+          git diff --cached --quiet || (git commit -m "Update rule-set (auto-update)" && git push)
