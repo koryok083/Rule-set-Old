@@ -1,60 +1,129 @@
-name: Mega Rule-Sets Builder
+name: Auto-Update Clash Rule-Sets
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *' # Auto-update daily at 00:00 UTC
   push:
     branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
     steps:
-      - name: Checkout repo
+      # ========== SETUP ==========
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Penting untuk operasi tag
+          fetch-depth: 0
 
       - name: Setup environment
         run: |
-          mkdir -p rule-sets
-          CURRENT_DATE=$(date +%Y%m%d)
-          echo "RELEASE_TAG=v${CURRENT_DATE}" >> $GITHUB_ENV
+          mkdir -p {rules,temp}
+          echo "RELEASE_TAG=v$(date +%Y%m%d)" >> $GITHUB_ENV
           echo "LAST_UPDATED=$(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_ENV
 
-      # ... (langkah build rule-sets tetap sama) ...
-
-      - name: Create and push tag
+      # ========== BUILD RULE-SETS ==========
+      - name: Build Bank Indonesia Rule-Set
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git tag -a ${{ env.RELEASE_TAG }} -m "Release ${{ env.RELEASE_TAG }}"
-          git push origin ${{ env.RELEASE_TAG }}
+          echo "🛠️ Building Bank Indonesia rules..."
+          # Download dari 5 sumber terpercaya
+          curl -sSL "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_bank-id.txt" > temp/bank1.txt
+          curl -sSL "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/banking.txt" > temp/bank2.txt
+          curl -sSL "https://raw.githubusercontent.com/olbat/ut1-blacklists/master/blacklists/banking/domains" > temp/bank3.txt
+          curl -sSL "https://raw.githubusercontent.com/nextdns/cname-cloaking-blocklist/master/banks" > temp/bank4.txt
+          curl -sSL "https://raw.githubusercontent.com/ShadowWhisperer/BlockLists/master/Lists/Banking" > temp/bank5.txt
 
-      - name: Create Release
+          cat <<EOF > rules/bank-indo.yaml
+          # Bank Indonesia Rule-Set
+          # Sources: malikshi, Adguard, olbat, nextdns, ShadowWhisperer
+          # Updated: ${{ env.LAST_UPDATED }}
+          
+          payload:
+          $(cat temp/bank{1..5}.txt | grep -Ev '^#|^$' | awk '{
+            if($0 ~ /^[a-zA-Z0-9.-]+$/) print "  - \"" $0 "\"";
+            else if($0 ~ /^\|\|/) print "  - \"" substr($0,3) "\"";
+            else if($0 ~ /^0\.0\.0\.0/) print "  - \"" $2 "\"";
+          }' | sort -u | grep -iE 'bca\.co\.id|mandiri\.co\.id|bni\.co\.id|bri\.co\.id|btn\.co\.id|jenius\.com|blu\.co\.id|digibank\.co\.id|ovo\.id|dana\.id|gopay\.co\.id')
+          EOF
+          echo "✅ Saved to rules/bank-indo.yaml ($(wc -l < rules/bank-indo.yaml) rules)"
+
+      - name: Build WhatsApp Rule-Set
+        run: |
+          echo "🛠️ Building WhatsApp rules..."
+          # 4 sumber update
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/surge-rules/release/ruleset/whatsapp.txt" > temp/whatsapp1.txt
+          curl -sSL "https://raw.githubusercontent.com/geekdada/surge-list/master/whatsapp.list" > temp/whatsapp2.txt
+          curl -sSL "https://raw.githubusercontent.com/DivineEngine/Profiles/master/Surge/Ruleset/Extra/WhatsApp.list" > temp/whatsapp3.txt
+          curl -sSL "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/WhatsApp/WhatsApp.list" > temp/whatsapp4.txt
+
+          cat <<EOF > rules/whatsapp.yaml
+          # WhatsApp Rule-Set
+          # Sources: Loyalsoldier, GeekDada, DivineEngine, blackmatrix7
+          # Updated: ${{ env.LAST_UPDATED }}
+          
+          payload:
+          $(cat temp/whatsapp{1..4}.txt | grep -Ev '^#|^$' | awk '{
+            if($0 ~ /^[a-zA-Z0-9.-]+$/) print "  - \"" $0 "\"";
+            else if($0 ~ /^\|\|/) print "  - \"" substr($0,3) "\"";
+            else if($0 ~ /^0\.0\.0\.0/) print "  - \"" $2 "\"";
+          }' | sort -u)
+          EOF
+          echo "✅ Saved to rules/whatsapp.yaml ($(wc -l < rules/whatsapp.yaml) rules)"
+
+      - name: Build Social Media Rule-Set
+        run: |
+          echo "🛠️ Building Social Media rules..."
+          # 6 sumber update
+          curl -sSL "https://raw.githubusercontent.com/malikshi/v2ray-rules-dat/rule/rule_sosmed.txt" > temp/sosmed1.txt
+          curl -sSL "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Telegram.list" > temp/sosmed2.txt
+          curl -sSL "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Twitter.list" > temp/sosmed3.txt
+          curl -sSL "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/Instagram.list" > temp/sosmed4.txt
+          curl -sSL "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Social/WeChat.list" > temp/sosmed5.txt
+          curl -sSL "https://raw.githubusercontent.com/sve1r/Rules-For-Quantumult-X/develop/Social/Reddit.list" > temp/sosmed6.txt
+
+          cat <<EOF > rules/sosmed.yaml
+          # Social Media Rule-Set
+          # Sources: v2ray-rules, ACL4SSR, sve1r
+          # Updated: ${{ env.LAST_UPDATED }}
+          
+          payload:
+          $(cat temp/sosmed{1..6}.txt | grep -Ev '^#|^$' | awk '{
+            if($0 ~ /^[a-zA-Z0-9.-]+$/) print "  - \"" $0 "\"";
+            else if($0 ~ /^\|\|/) print "  - \"" substr($0,3) "\"";
+            else if($0 ~ /^0\.0\.0\.0/) print "  - \"" $2 "\"";
+          }' | sort -u)
+          EOF
+          echo "✅ Saved to rules/sosmed.yaml ($(wc -l < rules/sosmed.yaml) rules)"
+
+      # ========== RELEASE ==========
+      - name: Create GitHub Release
+        id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          release_name: "Release ${{ env.RELEASE_TAG }}"
-          body: "Auto-updated mega rule-sets (${{ env.LAST_UPDATED }})"
+          release_name: "Clash Rules ${{ env.RELEASE_TAG }}"
+          body: |
+            🚀 Auto-generated Clash Rule-Sets
+            📅 Updated: ${{ env.LAST_UPDATED }}
+            📦 Contains:
+            - Bank Indonesia ($(wc -l < rules/bank-indo.yaml) rules)
+            - WhatsApp ($(wc -l < rules/whatsapp.yaml) rules)
+            - Social Media ($(wc -l < rules/sosmed.yaml) rules)
+            Sources: Multiple trusted repositories
           draft: false
           prerelease: false
 
-      - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./rule-sets/bank-indo.yaml
-          asset_name: bank-indo.yaml
-          asset_content_type: application/yaml
-
-      - name: Upload Multiple Assets
+      - name: Upload All Assets
         uses: AButler/upload-release-assets@v2.0
         with:
-          files: 'rule-sets/*.yaml'
-          repo-token: ${{ secrets.GH_TOKEN }}
+          files: 'rules/*.yaml'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           release-tag: ${{ env.RELEASE_TAG }}
+
+      # ========== CLEANUP ==========
+      - name: Cleanup
+        run: rm -rf temp/
