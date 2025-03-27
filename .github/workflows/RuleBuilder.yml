@@ -1,8 +1,8 @@
-name: Fixed Python Rule-Sets Builder
+name: Ultimate Rule-Sets Builder
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # Daily auto-update at 00:00 UTC
+    - cron: '0 0 * * *'  # Daily auto-update
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -25,60 +25,46 @@ jobs:
         run: pip install requests pyyaml
 
       # ========== BUILD RULES ==========
-      - name: Run Python Builder
-        id: build_rules
+      - name: Generate Rule-Sets
+        id: generate
         run: |
           python3 build_rules.py
-          echo "BANK_DOMAINS=$(cat rules/bank.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
-          echo "ADS_DOMAINS=$(cat rules/ads.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
-          echo "SOCIAL_DOMAINS=$(cat rules/social.yaml | grep -c '^-')" >> $GITHUB_OUTPUT
-        env:
-          LAST_UPDATED: $(date +'%Y-%m-%d %H:%M:%S %Z')
+          echo "bank_count=$(grep -c '^-' rules/bank.yaml)" >> $GITHUB_OUTPUT
+          echo "ads_count=$(grep -c '^-' rules/ads.yaml)" >> $GITHUB_OUTPUT
+          echo "social_count=$(grep -c '^-' rules/social.yaml)" >> $GITHUB_OUTPUT
+          echo "release_tag=v$(date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
 
       # ========== RELEASE ==========
+      - name: Create GitHub Tag
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git tag ${{ steps.generate.outputs.release_tag }}
+          git push origin ${{ steps.generate.outputs.release_tag }}
+
       - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: "v$(date +%Y%m%d)"
-          release_name: "Clash Rules v$(date +%Y%m%d)"
+          tag_name: ${{ steps.generate.outputs.release_tag }}
+          name: "Clash Rules ${{ steps.generate.outputs.release_tag }}"
           body: |
-            🏦 Banking: ${{ steps.build_rules.outputs.BANK_DOMAINS }} domains
-            🚫 Ads: ${{ steps.build_rules.outputs.ADS_DOMAINS }} domains
-            💬 Social: ${{ steps.build_rules.outputs.SOCIAL_DOMAINS }} domains
-            🔄 Updated: ${{ env.LAST_UPDATED }}
+            🏦 Banking: ${{ steps.generate.outputs.bank_count }} domains
+            🚫 Ads: ${{ steps.generate.outputs.ads_count }} domains
+            💬 Social: ${{ steps.generate.outputs.social_count }} domains
+            🔄 Generated at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          files: |
+            rules/bank.yaml
+            rules/ads.yaml
+            rules/social.yaml
           draft: false
           prerelease: false
-
-      - name: Upload Assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./rules/bank.yaml
-          asset_name: bank.yaml
-          asset_content_type: application/yaml
-
-      - name: Upload All Rules
-        run: |
-          for file in ./rules/*.yaml; do
-            if [ "$(basename $file)" != "bank.yaml" ]; then
-              echo "Uploading $(basename $file)..."
-              curl -sSL \
-                -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/yaml" \
-                --data-binary @"$file" \
-                "${{ github.event.release.upload_url }}?name=$(basename $file)"
-            fi
-          done
 
       # ========== NOTIFICATION ==========
       - name: Notify Success
         if: success()
         run: |
-          echo "🎉 Successfully built rule-sets!"
-          echo "📅 Last Updated: ${{ env.LAST_UPDATED }}"
-          echo "🏷️ Release Tag: v$(date +%Y%m%d)"
+          echo "🎉 Successfully released ${{ steps.generate.outputs.release_tag }}"
+          echo "📊 Stats:"
+          echo "  - Banking: ${{ steps.generate.outputs.bank_count }} domains"
+          echo "  - Ads: ${{ steps.generate.outputs.ads_count }} domains"
+          echo "  - Social: ${{ steps.generate.outputs.social_count }} domains"
