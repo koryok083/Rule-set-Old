@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import os
 import requests
+import yaml
 from pathlib import Path
 from datetime import datetime
 
-# Config
+# Configuration
 RULES_DIR = "rules"
 SOURCES = {
     "bank": [
@@ -24,14 +25,15 @@ SOURCES = {
 def clean_domain(domain):
     """Clean and validate domain"""
     domain = ''.join(c for c in domain if c.isalnum() or c in '.-')
-    if domain.count('.') < 1:
+    parts = domain.split('.')
+    if len(parts) < 2:
         return None
     return domain.lower()
 
 def fetch_domains(url):
-    """Fetch domains from URL with error handling"""
+    """Fetch and process domains from URL"""
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         
         domains = set()
@@ -48,8 +50,9 @@ def fetch_domains(url):
             else:
                 domain = line.split()[0]
             
-            if clean_domain(domain):
-                domains.add(clean_domain(domain))
+            cleaned = clean_domain(domain)
+            if cleaned:
+                domains.add(cleaned)
                 
         return domains
     except Exception as e:
@@ -67,36 +70,34 @@ def generate_rule(category, sources):
         print(f"❌ No domains found for {category}")
         return 0
     
-    # Create rules directory
+    # Prepare directory
     Path(RULES_DIR).mkdir(exist_ok=True)
     
     # Generate YAML
+    rule_data = {
+        "metadata": {
+            "category": category,
+            "sources": sources,
+            "updated": os.getenv("LAST_UPDATED"),
+            "domain_count": len(domains)
+        },
+        "payload": sorted(domains)
+    }
+    
     output_path = Path(RULES_DIR) / f"{category}.yaml"
     with open(output_path, 'w') as f:
-        f.write(f"# {category.capitalize()} Rule-Set\n")
-        f.write(f"# Sources: {len(sources)} trusted repositories\n")
-        f.write(f"# Updated: {os.getenv('LAST_UPDATED')}\n")
-        f.write(f"# Total Domains: {len(domains)}\n\n")
-        f.write("payload:\n")
-        for domain in sorted(domains):
-            f.write(f"  - \"{domain}\"\n")
+        yaml.dump(rule_data, f, default_flow_style=False, sort_keys=False)
     
     print(f"✅ Generated {output_path} with {len(domains)} domains")
     return len(domains)
 
-def main():
+if __name__ == "__main__":
     print("🚀 Starting Rule-Sets Builder")
-    stats = {}
+    total_domains = 0
     
     for category, urls in SOURCES.items():
         count = generate_rule(category, urls)
-        stats[category] = count
+        total_domains += count
     
-    print("\n📊 Build Summary:")
-    for category, count in stats.items():
-        print(f"  - {category.capitalize()}: {count} domains")
-    
-    print(f"\n🎉 All rule-sets generated in '{RULES_DIR}' directory")
-
-if __name__ == "__main__":
-    main()
+    print(f"\n🎉 Total {total_domains} domains processed")
+    print(f"📁 Output directory: {RULES_DIR}")
